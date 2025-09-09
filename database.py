@@ -3,7 +3,7 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 import os
  
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres:12345@localhost:5432/document_library")
+DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://admin:YKmcce3Pe9H4mgmBWOvzMPYqYBgjeNnq@dpg-d30adkvdiees73eshj60-a.oregon-postgres.render.com/document_library")
 
 if DATABASE_URL and DATABASE_URL.startswith("postgres://"):
     DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
