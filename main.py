@@ -11,9 +11,15 @@ from sqlalchemy.orm import Session
 import os
 import uuid
 import shutil
-from pathlib import Path
 import utils
-import config
+from pathlib import Path
+import logging
+
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger("app")
 
 
 app = FastAPI()
@@ -60,12 +66,12 @@ db_dependency = Annotated[Session, Depends(get_db)]
 
 def process_document_task(document_id: str, file_path: str):
     try:
-        print(f"Starting to process document: {document_id}")
+        logger.info(f"Processing document: {document_id}")
         db = SessionLocal()
         
         document = db.query(Document).filter(Document.id == document_id).first()
         if not document:
-            print(f"Document not found: {document_id}")
+            logger.error(f"Document not found: {document_id}")
             return
         
         pages_text = utils.extract_text_from_pdf(file_path)
@@ -73,11 +79,12 @@ def process_document_task(document_id: str, file_path: str):
         if not pages_text:
             document.status = "failed"
             db.commit()
-            print(f"Failed to extract text from: {document_id}")
+            logger.error(f"Failed to extract text from: {document_id}")
             return
         
         for page_num, page_text in enumerate(pages_text, 1):
-            chunks = utils.split_text_into_chunks(page_text)
+            chunk_size = int(os.getenv("CHUNK_SIZE", "800"))
+            chunks = utils.split_text_into_chunks(page_text, chunk_size)
             
             for chunk_index, chunk in enumerate(chunks):
                 page_record = DocumentPage(
@@ -92,10 +99,10 @@ def process_document_task(document_id: str, file_path: str):
         db.commit()
         db.close()
         
-        print(f"Successfully processed document: {document_id}")
+        logger.info(f"Document processed: {document_id}")
         
     except Exception as e:
-        print(f"Error processing document {document_id}: {e}")
+        logger.error(f"Error processing document {document_id}: {e}")
         try:
             db = next(get_db())
             document = db.query(Document).filter(Document.id == document_id).first()
@@ -107,7 +114,8 @@ def process_document_task(document_id: str, file_path: str):
             pass
 
 def verify_api_key(x_api_key: str = Header(None)):
-    if not x_api_key or x_api_key != config.API_KEY:
+    api_key = os.getenv("API_KEY", "your-secret-key-here")
+    if not x_api_key or x_api_key != api_key:
         raise HTTPException(status_code=401, detail="Invalid API key")
     return True
 
@@ -120,16 +128,19 @@ async def upload_document(
     _api_key_valid: bool = Depends(verify_api_key)
 ):
     if not file.filename.lower().endswith('.pdf'):
+        logger.warning(f"Invalid file type: {file.filename}")
         raise HTTPException(status_code=400, detail="Only PDF files allowed")
     
-    if file.size > config.MAX_FILE_SIZE:
+    max_file_size = int(os.getenv("MAX_FILE_SIZE", "MAX_FILE_SIZE"))
+    if file.size and file.size > max_file_size:
+        logger.warning(f"File too large: {file.size} bytes")
         raise HTTPException(status_code=400, detail="File too large")
     
     try:
         document_id = str(uuid.uuid4())
         file_extension = ".pdf"
         storage_filename = f"{document_id}{file_extension}"
-        file_path = os.path.join(config.STORAGE_FOLDER, storage_filename)
+        file_path = os.path.join(os.getenv("STORAGE_FOLDER", str(Path.cwd() / "storage")), storage_filename)
         
         with open(file_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
@@ -152,12 +163,12 @@ async def upload_document(
         
         background_tasks.add_task(process_document_task, document_id, file_path)
         
-        print(f"Document uploaded: {document_id}")
+        logger.info(f"Document uploaded: {file.filename}")
         
         return DocumentResponse.model_validate(document)
         
     except Exception as e:
-        print(f"Error uploading document: {e}")
+        logger.error(f"Error uploading document: {e}")
         raise HTTPException(status_code=500, detail="Upload failed")
 
 @app.get("/documents", response_model=list[DocumentResponse])
@@ -224,7 +235,7 @@ async def delete_document(
     try:
         file_extension = ".pdf"
         storage_filename = f"{document_id}{file_extension}"
-        file_path = os.path.join(config.STORAGE_FOLDER, storage_filename)
+        file_path = os.path.join(os.getenv("STORAGE_FOLDER", str(Path.cwd() / "storage")), storage_filename)
         
         if os.path.exists(file_path):
             os.remove(file_path)
@@ -233,12 +244,12 @@ async def delete_document(
         db.delete(document)
         db.commit()
         
-        print(f"Document deleted: {document_id}")
+        logger.info(f"Document deleted: {document.filename}")
         
         return {"message": "Document deleted successfully"}
         
     except Exception as e:
-        print(f"Error deleting document: {e}")
+        logger.error(f"Error deleting document: {e}")
         raise HTTPException(status_code=500, detail="Delete failed")
 
 @app.get("/documents/{document_id}/download")
@@ -254,7 +265,7 @@ async def download_document(
     
     file_extension = ".pdf"
     storage_filename = f"{document_id}{file_extension}"
-    file_path = os.path.join(config.STORAGE_FOLDER, storage_filename)
+    file_path = os.path.join(os.getenv("STORAGE_FOLDER", str(Path.cwd() / "storage")), storage_filename)
     
     if not os.path.exists(file_path):
         raise HTTPException(status_code=404, detail="File not found")
@@ -272,6 +283,7 @@ async def search_documents(
     db: Session = Depends(get_db),
     _api_key_valid: bool = Depends(verify_api_key)
 ):
+    logger.info(f"Search: '{q}'")
     search_term = f"%{q.lower()}%"
     
     results = db.query(DocumentPage, Document).join(Document).filter(

@@ -1,9 +1,9 @@
-# utils.py
 import PyPDF2
-import config
+import logging
+
+logger = logging.getLogger("utils")
 
 def extract_text_from_pdf(file_path):
-    """Extract text from PDF file"""
     try:
         pages_text = []
         with open(file_path, 'rb') as file:
@@ -13,11 +13,10 @@ def extract_text_from_pdf(file_path):
                 pages_text.append(text)
         return pages_text
     except Exception as e:
-        print(f"Error reading PDF: {e}")
+        logger.error(f"PDF read error: {e}")
         return []
 
 def get_page_count(file_path):
-    """Get number of pages in PDF"""
     try:
         with open(file_path, 'rb') as file:
             pdf_reader = PyPDF2.PdfReader(file)
@@ -25,19 +24,12 @@ def get_page_count(file_path):
     except:
         return 0
 
-def split_text_into_chunks(text):
-    """Split long text into smaller chunks"""
-    if len(text) <= config.CHUNK_SIZE:
+def split_text_into_chunks(text, chunk_size=800):
+    if len(text) <= chunk_size:
         return [text]
     
     chunks = []
-    for i in range(0, len(text), config.CHUNK_SIZE):
-        chunk = text[i:i + config.CHUNK_SIZE]
+    for i in range(0, len(text), chunk_size):
+        chunk = text[i:i + chunk_size]
         chunks.append(chunk)
     return chunks
-
-# def check_api_key(provided_key):
-#     """Check if API key is valid"""
-#     if config.API_KEY is None:
-#         return True  # No API key required
-#     return provided_key == config.API_KEY
