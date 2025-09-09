@@ -1,35 +1,35 @@
-import PyPDF2
 import logging
+import PyPDF2
+from typing import List, Optional
 
 logger = logging.getLogger("utils")
 
-def extract_text_from_pdf(file_path):
+def extract_text_from_pdf(file_path: str) -> List[str]:
+    """
+    Returns a list of page texts. Empty string for pages with no extractable text.
+    """
     try:
-        pages_text = []
-        with open(file_path, 'rb') as file:
-            pdf_reader = PyPDF2.PdfReader(file)
-            for page in pdf_reader.pages:
-                text = page.extract_text()
+        pages_text: List[str] = []
+        with open(file_path, "rb") as file:
+            reader = PyPDF2.PdfReader(file)
+            for page in reader.pages:
+                text = page.extract_text() or ""   # guard None
                 pages_text.append(text)
         return pages_text
     except Exception as e:
         logger.error(f"PDF read error: {e}")
         return []
 
-def get_page_count(file_path):
+def get_page_count(file_path: str) -> int:
     try:
-        with open(file_path, 'rb') as file:
-            pdf_reader = PyPDF2.PdfReader(file)
-            return len(pdf_reader.pages)
-    except:
+        with open(file_path, "rb") as file:
+            reader = PyPDF2.PdfReader(file)
+            return len(reader.pages)
+    except Exception:
         return 0
 
-def split_text_into_chunks(text, chunk_size=800):
+def split_text_into_chunks(text: Optional[str], chunk_size: int = 800) -> List[str]:
+    text = text or ""  # guard None
     if len(text) <= chunk_size:
         return [text]
-    
-    chunks = []
-    for i in range(0, len(text), chunk_size):
-        chunk = text[i:i + chunk_size]
-        chunks.append(chunk)
-    return chunks
+    return [text[i:i + chunk_size] for i in range(0, len(text), chunk_size)]
