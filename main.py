@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Annotated, Optional, List
 
 import fastapi
-from fastapi import FastAPI, HTTPException, Depends, UploadFile, File, BackgroundTasks, Query, Header, Request
+from fastapi import FastAPI, HTTPException, Depends, UploadFile, File, BackgroundTasks, Query, Header
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import text
@@ -128,17 +128,12 @@ async def upload_document(
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
     _api_key_valid: bool = Depends(verify_api_key),
-    request: Optional[Request] = None,
 ):
     if not file.filename.lower().endswith(".pdf"):
         logger.warning(f"Invalid file type: {file.filename}")
         raise HTTPException(status_code=400, detail="Only PDF files allowed")
 
     max_file_size = int(os.getenv("MAX_FILE_SIZE", str(10 * 1024 * 1024)))
-    content_length = request.headers.get("content-length") if request else None
-    if content_length and int(content_length) > max_file_size:
-        logger.warning(f"File too large by header: {content_length} bytes")
-        raise HTTPException(status_code=400, detail="File too large")
 
     try:
         document_id = str(uuid.uuid4())
