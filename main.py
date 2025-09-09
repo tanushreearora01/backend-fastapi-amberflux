@@ -1,7 +1,8 @@
-from fastapi import FastAPI, HTTPException, Depends, UploadFile, File, BackgroundTasks, Query
+from fastapi import FastAPI, HTTPException, Depends, UploadFile, File, BackgroundTasks, Query, Header
 from pydantic import BaseModel, ConfigDict
 from fastapi.responses import FileResponse
-from typing import List, Annotated
+from typing import Annotated
+from sqlalchemy import text
 from datetime import datetime
 from models import Document, DocumentPage
 import models
@@ -75,12 +76,9 @@ def process_document_task(document_id: str, file_path: str):
             print(f"Failed to extract text from: {document_id}")
             return
         
-        # Save each page text to database
         for page_num, page_text in enumerate(pages_text, 1):
-            # Split text into chunks
             chunks = utils.split_text_into_chunks(page_text)
             
-            # Save each chunk
             for chunk_index, chunk in enumerate(chunks):
                 page_record = DocumentPage(
                     document_id=document_id,
@@ -90,7 +88,6 @@ def process_document_task(document_id: str, file_path: str):
                 )
                 db.add(page_record)
         
-        # Mark document as ready
         document.status = "ready"
         db.commit()
         db.close()
@@ -109,19 +106,24 @@ def process_document_task(document_id: str, file_path: str):
         except:
             pass
 
+def verify_api_key(x_api_key: str = Header(None)):
+    if not x_api_key or x_api_key != config.API_KEY:
+        raise HTTPException(status_code=401, detail="Invalid API key")
+    return True
+
 
 @app.post("/documents", response_model=DocumentResponse)
 async def upload_document(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
-    # api_key_valid: bool = Depends(verify_api_key)
+    _api_key_valid: bool = Depends(verify_api_key)
 ):
     if not file.filename.lower().endswith('.pdf'):
         raise HTTPException(status_code=400, detail="Only PDF files allowed")
     
-    # if file.size and file.size > config.MAX_FILE_SIZE:
-    #     raise HTTPException(status_code=400, detail="File too large")
+    if file.size > config.MAX_FILE_SIZE:
+        raise HTTPException(status_code=400, detail="File too large")
     
     try:
         document_id = str(uuid.uuid4())
@@ -164,13 +166,11 @@ async def get_documents(
     offset: int = Query(0, ge=0),
     db: Session = Depends(get_db)
 ):
-    """Get list of documents"""
     documents = db.query(Document).offset(offset).limit(limit).all()
     return [DocumentResponse.model_validate(doc) for doc in documents]
 
 @app.get("/documents/{document_id}", response_model=DocumentResponse)
 async def get_document(document_id: str, db: Session = Depends(get_db)):
-    """Get specific document"""
     document = db.query(Document).filter(Document.id == document_id).first()
     
     if not document:
@@ -182,9 +182,10 @@ async def get_document(document_id: str, db: Session = Depends(get_db)):
 async def get_document_page(
     document_id: str, 
     page_number: int, 
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    _api_key_valid: bool = Depends(verify_api_key)
 ):
-    """Get text from specific page"""
+
     document = db.query(Document).filter(Document.id == document_id).first()
     if not document:
         raise HTTPException(status_code=404, detail="Document not found")
@@ -213,7 +214,7 @@ async def get_document_page(
 async def delete_document(
     document_id: str, 
     db: Session = Depends(get_db),
-    # api_key_valid: bool = Depends(verify_api_key)
+    _api_key_valid: bool = Depends(verify_api_key)
 ):
     document = db.query(Document).filter(Document.id == document_id).first()
     
@@ -241,93 +242,11 @@ async def delete_document(
         raise HTTPException(status_code=500, detail="Delete failed")
 
 @app.get("/documents/{document_id}/download")
-async def download_document(document_id: str, db: Session = Depends(get_db)):
-    document = db.query(Document).filter(Document.id == document_id).first()
-    
-    if not document:
-        raise HTTPException(status_code=404, detail="Document not found")
-    
-    file_extension = ".pdf"
-    storage_filename = f"{document_id}{file_extension}"
-    file_path = os.path.join(config.STORAGE_FOLDER, storage_filename)
-    
-    if not os.path.exists(file_path):
-        raise HTTPException(status_code=404, detail="File not found")
-    
-    return FileResponse(
-        path=file_path,
-        filename=document.filename,
-        media_type='application/pdf'
-    )
-
-app.get("/documents/{document_id}/pages/{page_number}", response_model=DocumentPageResponse)
-async def get_document_page(
-    document_id: str, 
-    page_number: int, 
-    db: Session = Depends(get_db)
-):
-    """Get text from specific page"""
-    # Check if document exists
-    document = db.query(Document).filter(Document.id == document_id).first()
-    if not document:
-        raise HTTPException(status_code=404, detail="Document not found")
-    
-    # Get all chunks for this page
-    page_chunks = db.query(DocumentPage).filter(
-        DocumentPage.document_id == document_id,
-        DocumentPage.page_number == page_number
-    ).order_by(DocumentPage.chunk_index).all()
-    
-    if not page_chunks:
-        raise HTTPException(status_code=404, detail="Page not found")
-    
-    # Combine all chunks into full text
-    full_text = ""
-    chunks = []
-    for chunk in page_chunks:
-        full_text += chunk.text
-        chunks.append(chunk.text)
-    
-    return DocumentPageResponse(
-        page_number=page_number,
-        text=full_text,
-        chunks=chunks if len(chunks) > 1 else []
-    )
-@app.delete("/documents/{document_id}")
-async def delete_document(
+async def download_document(
     document_id: str, 
     db: Session = Depends(get_db),
-    # api_key_valid: bool = Depends(verify_api_key)
+    _api_key_valid: bool = Depends(verify_api_key)
 ):
-    """Delete document"""
-    document = db.query(Document).filter(Document.id == document_id).first()
-    
-    if not document:
-        raise HTTPException(status_code=404, detail="Document not found")
-    
-    try:
-        # Delete file from storage
-        file_extension = ".pdf"
-        storage_filename = f"{document_id}{file_extension}"
-        file_path = os.path.join(config.STORAGE_FOLDER, storage_filename)
-        
-        if os.path.exists(file_path):
-            os.remove(file_path)
-        
-        # Delete from database
-        db.delete(document)
-        db.commit()
-        
-        print(f"Document deleted: {document_id}")
-        
-        return {"message": "Document deleted successfully"}
-        
-    except Exception as e:
-        print(f"Error deleting document: {e}")
-        raise HTTPException(status_code=500, detail="Delete failed")
-
-@app.get("/documents/{document_id}/download")
-async def download_document(document_id: str, db: Session = Depends(get_db)):
     document = db.query(Document).filter(Document.id == document_id).first()
     
     if not document:
@@ -350,38 +269,31 @@ async def download_document(document_id: str, db: Session = Depends(get_db)):
 async def search_documents(
     q: str = Query(..., min_length=1),
     limit: int = Query(10, ge=1, le=100),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    _api_key_valid: bool = Depends(verify_api_key)
 ):
-    """Search for text in documents"""
-    # Simple search - find pages containing the search term
     search_term = f"%{q.lower()}%"
     
-    # Query pages that contain the search term
     results = db.query(DocumentPage, Document).join(Document).filter(
         DocumentPage.text.ilike(search_term)
     ).limit(limit).all()
     
     search_results = []
     for page, document in results:
-        # Create text snippet around search term
         text_lower = page.text.lower()
         search_lower = q.lower()
         
-        # Find position of search term
         pos = text_lower.find(search_lower)
         if pos >= 0:
-            # Create snippet around the search term
             start = max(0, pos - 50)
             end = min(len(page.text), pos + len(q) + 50)
             snippet = page.text[start:end]
             
-            # Add ... if needed
             if start > 0:
                 snippet = "..." + snippet
             if end < len(page.text):
                 snippet = snippet + "..."
         else:
-            # Fallback snippet
             snippet = page.text[:100] + "..."
         
         search_results.append(SearchResult(
@@ -399,10 +311,9 @@ def read_root():
 
 @app.get("/health", response_model=HealthResponse)
 async def health_check(db: Session = Depends(get_db)):
-    """Check if service is healthy"""
     db_working = True
     try:
-        db.execute("SELECT 1")
+        db.execute(text("SELECT 1"))
     except:
         db_working = False
     
