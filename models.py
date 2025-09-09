@@ -4,7 +4,7 @@ from sqlalchemy import Column, String, Integer, Text, ForeignKey, DateTime
 from datetime import datetime
 from sqlalchemy.orm import relationship
 
-#orm to connect to the database using sqlalchemy
+
 class Document(Base):
     __tablename__ = "documents"
     id = Column(String, primary_key=True, default=lambda:str(uuid.uuid4()))
