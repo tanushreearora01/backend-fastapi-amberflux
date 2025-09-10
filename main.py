@@ -61,9 +61,10 @@ def get_db():
 
 db_dependency = Annotated[Session, Depends(get_db)]
 
-def verify_api_key(x_api_key: str = Header(None)):
-    api_key = os.getenv("API_KEY", "your-secret-key-here")
-    if not x_api_key or x_api_key != api_key:
+def verify_api_key(x_api_key: str = Header(None), api_key: str = Query(None)):
+    expected_key = os.getenv("API_KEY", "12345")
+    provided_key = x_api_key or api_key
+    if not provided_key or provided_key != expected_key:
         raise HTTPException(status_code=401, detail="Invalid API key")
     return True
 
@@ -121,7 +122,6 @@ def process_document_task(document_id: str, file_path: str):
         except Exception:
             pass
 
-# ---------- Routes ----------
 @app.post("/documents", response_model=DocumentResponse)
 async def upload_document(
     background_tasks: BackgroundTasks,
