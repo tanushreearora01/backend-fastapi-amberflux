@@ -203,20 +203,6 @@ https://backend-amberflux-42819b9bb485.herokuapp.com/documents/{document_id}/dow
 ```
 
 
-
-## Features
-
-- ✅ PDF document upload and storage
-- ✅ Automatic text extraction and chunking
-- ✅ Background processing for large files
-- ✅ Document management (list, retrieve, delete)
-- ✅ Page-by-page content access
-- ✅ Keyword search across documents
-- ✅ API key authentication
-- ✅ File size limits and validation
-- ✅ PostgreSQL database persistence
-- ✅ Health monitoring
-
 ## Request/Response Formats
 
 ### Upload Response
@@ -282,18 +268,6 @@ https://backend-amberflux-42819b9bb485.herokuapp.com/documents/{document_id}/dow
   "db_connection": true
 }
 ```
-
-
-
-## 🔧 Configuration
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `DATABASE_URL` | `postgresql://admin:YKmcce3Pe9H4mgmBWOvzMPYqYBgjeNnq@dpg-d30adkvdiees73eshj60-a.oregon-postgres.render.com/document_library` | Database connection string |
-| `API_KEY` | `12345` | API key for authentication |
-| `STORAGE_FOLDER` | `./storage` | Directory for storing uploaded files |
-| `MAX_FILE_SIZE` | `10485760` | Maximum file size in bytes (10MB) |
-| `CHUNK_SIZE` | `800` | Text chunk size for processing |
 
 
 ### API Key Issues
